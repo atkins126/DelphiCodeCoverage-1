@@ -670,9 +670,7 @@ type
     FInStackTracing: Boolean;
     FRaw: Boolean;
     FStackOffset: Int64;
-    {$IFDEF CPU64}
-    procedure CaptureBackTrace;
-    {$ENDIF CPU64}
+    procedure CaptureBackTrace(AFirstCaller: Pointer);
     function GetItems(Index: Integer): TJclStackInfoItem;
     function NextStackFrame(var StackFrame: PStackFrame; var StackInfo: TStackInfo): Boolean;
     procedure StoreToList(const StackInfo: TStackInfo);
@@ -5378,8 +5376,6 @@ end;
 
 constructor TJclStackInfoList.Create(ARaw: Boolean; AIgnoreLevels: Integer;
   AFirstCaller: Pointer; ADelayedTrace: Boolean; ABaseOfStack, ATopOfStack: Pointer);
-var
-  Item: TJclStackInfoItem;
 begin
   inherited Create;
   FIgnoreLevels := AIgnoreLevels;
@@ -5395,13 +5391,20 @@ begin
     TopOfStack := TJclAddr(ATopOfStack);
 
   FModuleInfoList := GlobalModulesList.CreateModulesList;
+  CaptureBackTrace(AFirstCaller);
+end;
+
+{$IFDEF CPU32}
+procedure TJclStackInfoList.CaptureBackTrace(AFirstCaller: Pointer);
+var
+  Item: TJclStackInfoItem;
+begin
   if AFirstCaller <> nil then
   begin
     Item := TJclStackInfoItem.Create;
     Item.FStackInfo.CallerAddr := TJclAddr(AFirstCaller);
     Add(Item);
   end;
-  {$IFDEF CPU32}
   if DelayedTrace then
     DelayStoreStack
   else
@@ -5409,11 +5412,8 @@ begin
     TraceStackRaw
   else
     TraceStackFrames;
-  {$ENDIF CPU32}
-  {$IFDEF CPU64}
-  CaptureBackTrace;
-  {$ENDIF CPU64}
 end;
+{$ENDIF CPU32}
 
 destructor TJclStackInfoList.Destroy;
 begin
@@ -5424,7 +5424,7 @@ begin
 end;
 
 {$IFDEF CPU64}
-procedure TJclStackInfoList.CaptureBackTrace;
+procedure TJclStackInfoList.CaptureBackTrace(AFirstCaller: Pointer);
 const
   InternalSkipFrames = 1; // skip this method
 var
@@ -5448,6 +5448,9 @@ begin
 
   ResetMemory(StackInfo, SizeOf(StackInfo));
   for I := 0 to CapturedFramesCount - 1 do
+    if BackTrace[I] = AFirstCaller then
+      Break;
+  for I := I to CapturedFramesCount - 1 do
   begin
     StackInfo.CallerAddr := TJclAddr(BackTrace[I]);
     StackInfo.Level := I;
